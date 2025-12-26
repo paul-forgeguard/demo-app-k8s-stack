@@ -11,9 +11,9 @@
 Built a production-grade single-node Kubernetes cluster on Rocky Linux running an AI application stack. This homelab project provides practical experience with core CKA exam domains while creating a functional AI chat interface with vector database support, text-to-speech, and speech-to-text capabilities.
 
 **Key Metrics:**
-- 4 git commits with ~12,000 lines of code/configuration
-- 56 configuration and documentation files
-- 18 automation scripts (8 setup + 10 admin)
+- 5 git commits with ~12,500 lines of code/configuration
+- 58 configuration and documentation files
+- 19 automation scripts (9 setup + 10 admin)
 - 13 comprehensive documentation files
 
 ---
@@ -165,6 +165,7 @@ kubectl describe secret ai-stack-secrets -n ai
 | `06-configure-cert-manager.sh` | Setup TLS CA infrastructure |
 | `07-configure-firewall.sh` | Configure firewalld rules |
 | `08-label-node.sh` | Label node for workload scheduling |
+| `09-enable-gpu.sh` | Install NVIDIA GPU Operator via Helm |
 
 ### Admin Scripts (Day-to-Day)
 | Script | Purpose |
@@ -193,8 +194,9 @@ kubectl describe secret ai-stack-secrets -n ai
 | Open WebUI | Deployment | ChatGPT-like AI interface with RAG support |
 | PostgreSQL + pgvector | StatefulSet | Vector database for embeddings/semantic search |
 | Redis | StatefulSet | Session management and caching |
-| Kokoro | Deployment | High-quality text-to-speech (CPU) |
-| Faster-Whisper | Deployment | Speech-to-text transcription (CPU) |
+| Kokoro | Deployment | High-quality text-to-speech (GPU-accelerated) |
+| Faster-Whisper | Deployment | Speech-to-text transcription (GPU-accelerated) |
+| NVIDIA GPU Operator | Helm Release | GPU device plugin, driver toolkit, time-slicing |
 | pgAdmin | Deployment | Database administration interface |
 | Portainer CE | Helm Release | Kubernetes cluster management UI |
 | NGINX Ingress | DaemonSet | HTTP/HTTPS traffic routing |
@@ -248,17 +250,19 @@ kubectl describe secret ai-stack-secrets -n ai
 ## Repository Statistics
 
 ```
-Total Files:        54 (scripts, manifests, documentation)
-Lines of Code:      ~11,900
-Git Commits:        3
-Scripts Created:    18
-Documentation:      ~150KB
+Total Files:        58 (scripts, manifests, documentation)
+Lines of Code:      ~12,500
+Git Commits:        5
+Scripts Created:    19
+Documentation:      ~160KB
 ```
 
 **Git History:**
 1. `c117655` - Initial commit: Full stack infrastructure (~8,000 lines)
 2. `5ece312` - Fix: MicroK8s installation script
 3. `a4ed80c` - Refactor: Replace Makefile with modular shell scripts (+3,900/-355 lines)
+4. `259d08d` - Add manual deployment walkthrough and CKA progress notes
+5. `395d734` - Add GPU support and configure Open WebUI TTS/STT integration
 
 ---
 
@@ -373,14 +377,177 @@ kubectl api-resources --namespaced=false
 
 ---
 
-## Next Steps
+## Session: December 25-26, 2025
 
-1. **GPU Enablement** - Configure NVIDIA device plugin for TTS/STT acceleration
-2. **Monitoring** - Add Prometheus/Grafana for observability
-3. **Multi-node** - Expand to HA cluster with Longhorn storage
-4. **GitOps** - Implement FluxCD for automated deployments
-5. **Network Policies** - Add pod-to-pod security rules
+### Completed: GPU Enablement for AI Workloads
+
+Successfully enabled GPU acceleration for Kokoro TTS and Faster-Whisper STT services using NVIDIA GPU Operator with time-slicing to share a single RTX 3090 GPU between multiple pods.
+
+### GPU Operator Installation
+
+**Challenge:** The `microk8s enable nvidia` addon failed repeatedly with timeouts and stuck CRDs.
+
+**Solution:** Manual Helm installation with MicroK8s-specific configuration:
+```bash
+# Add NVIDIA Helm repo
+helm repo add nvidia https://helm.ngc.nvidia.com/nvidia
+helm repo update
+
+# Install GPU Operator with MicroK8s paths
+helm install gpu-operator nvidia/gpu-operator \
+    --namespace gpu-operator --create-namespace \
+    --set driver.enabled=false \
+    --set toolkit.env[0].name=CONTAINERD_CONFIG \
+    --set toolkit.env[0].value=/var/snap/microk8s/current/args/containerd-template.toml \
+    --set toolkit.env[1].name=CONTAINERD_SOCKET \
+    --set toolkit.env[1].value=/var/snap/microk8s/common/run/containerd.sock \
+    --set toolkit.env[2].name=CONTAINERD_RUNTIME_CLASS \
+    --set toolkit.env[2].value=nvidia \
+    --set toolkit.env[3].name=CONTAINERD_SET_AS_DEFAULT \
+    --set toolkit.env[3].value="true"
+```
+
+**Key Learning:** MicroK8s snap uses non-standard containerd paths that must be explicitly configured.
+
+### containerd Runtime Fix
+
+**Problem:** GPU Operator toolkit created broken `/etc/containerd/conf.d/99-nvidia.toml` causing node NotReady.
+
+**Symptom:** Pods stuck with "no runtime for nvidia configured" error.
+
+**Fix:** Manually create minimal nvidia runtime config matching MicroK8s snap paths.
+
+### GPU Time-Slicing Configuration
+
+**Problem:** Single GPU, two pods need it (Kokoro + Faster-Whisper).
+
+**Solution:** NVIDIA time-slicing ConfigMap + ClusterPolicy patch:
+```yaml
+# ConfigMap for time-slicing
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: time-slicing-config
+  namespace: gpu-operator
+data:
+  any: |-
+    version: v1
+    flags:
+      migStrategy: none
+    sharing:
+      timeSlicing:
+        resources:
+          - name: nvidia.com/gpu
+            replicas: 2
+```
+
+```bash
+# Patch ClusterPolicy to use time-slicing config
+kubectl patch clusterpolicy cluster-policy --type merge -p \
+  '{"spec":{"devicePlugin":{"config":{"name":"time-slicing-config","default":"any"}}}}'
+```
+
+**Result:** Node now advertises `nvidia.com/gpu: 2` instead of 1, allowing both services to request GPU.
+
+### AI Services GPU Migration
+
+| Service | CPU Image | GPU Image |
+|---------|-----------|-----------|
+| Kokoro | `ghcr.io/remsky/kokoro-fastapi-cpu` | `ghcr.io/remsky/kokoro-fastapi-gpu:latest` |
+| Faster-Whisper | `fedirz/faster-whisper-server:latest` | `fedirz/faster-whisper-server:latest-cuda` |
+
+Added to both deployments:
+```yaml
+resources:
+  limits:
+    nvidia.com/gpu: 1
+```
+
+### Open WebUI Integration
+
+Configured Open WebUI to use local TTS/STT services:
+```yaml
+# TTS Configuration
+- name: AUDIO_TTS_ENGINE
+  value: "openai"
+- name: AUDIO_TTS_OPENAI_API_BASE_URL
+  value: "http://kokoro:8880/v1"
+- name: AUDIO_TTS_OPENAI_API_KEY
+  value: "not-needed"
+
+# STT Configuration
+- name: AUDIO_STT_ENGINE
+  value: "openai"
+- name: AUDIO_STT_OPENAI_API_BASE_URL
+  value: "http://faster-whisper:8000/v1"
+- name: AUDIO_STT_OPENAI_API_KEY
+  value: "not-needed"
+```
+
+Also added Redis WebSocket manager and multi-worker support:
+```yaml
+- name: WEBSOCKET_MANAGER
+  value: "redis"
+- name: WEBSOCKET_REDIS_URL
+  value: "redis://redis:6379/1"
+- name: UVICORN_WORKERS
+  value: "2"
+```
+
+### kubectl/Helm Commands Practiced
+
+```bash
+# GPU Operator installation via Helm
+helm install gpu-operator nvidia/gpu-operator --namespace gpu-operator ...
+
+# CRD finalizer cleanup (when stuck)
+kubectl patch crd clusterpolicies.nvidia.com -p '{"metadata":{"finalizers":[]}}' --type=merge
+
+# Apply time-slicing ConfigMap
+kubectl apply -n gpu-operator -f time-slicing-config.yaml
+
+# Patch ClusterPolicy for time-slicing
+kubectl patch clusterpolicy cluster-policy --type merge -p '{"spec":{"devicePlugin":{"config":{"name":"..."}}}}'
+
+# Verify GPU resources on node
+kubectl describe node | grep nvidia
+
+# Check GPU Operator pods
+kubectl get pods -n gpu-operator
+
+# Watch pod GPU allocation
+kubectl describe pod <pod-name> -n ai | grep -A5 "Limits:"
+```
+
+### Key Learnings
+
+1. **MicroK8s snap paths** - GPU Operator needs explicit containerd socket/config paths
+2. **Driver management** - Use `driver.enabled=false` when host already has NVIDIA drivers
+3. **Time-slicing vs MIG** - Time-slicing allows GPU sharing without MIG hardware support
+4. **ClusterPolicy CRD** - Controls all GPU Operator behavior; modifications require understanding CRD structure
+5. **Finalizer cleanup** - Stuck CRD deletion requires patching `metadata.finalizers` to empty array
+
+### Configuration Changes Made
+
+| Component | Change | Reason |
+|-----------|--------|--------|
+| Kokoro | CPU → GPU image | Enable GPU-accelerated TTS |
+| Faster-Whisper | CPU → CUDA image | Enable GPU-accelerated STT |
+| Open WebUI | Added TTS/STT env vars | Integrate with local services |
+| Open WebUI | Added Redis WebSocket | Multi-worker session support |
 
 ---
 
-*Last Updated: December 24, 2025*
+## Next Steps
+
+1. ~~**GPU Enablement** - Configure NVIDIA device plugin for TTS/STT acceleration~~ ✅ COMPLETED
+2. **Multi-node Expansion** - Add non-GPU worker node for horizontal scaling
+3. **Shared Storage** - Implement Longhorn for multi-node persistent storage
+4. **Monitoring** - Add Prometheus/Grafana for observability
+5. **GitOps** - Implement FluxCD/ArgoCD for automated deployments
+6. **Network Policies** - Add pod-to-pod security rules
+7. **Config Externalization** - Move hardcoded hostnames to ConfigMap for public repo
+
+---
+
+*Last Updated: December 26, 2025*
