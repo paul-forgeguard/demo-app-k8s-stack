@@ -1,0 +1,162 @@
+# Kubernetes Secrets (NEVER commit real secrets!)
+secrets.yaml
+**/secrets.yaml
+k8s/**/secrets.yaml
+
+# Terraform State Files (contain sensitive data)
+*.tfstate
+*.tfstate.backup
+*.tfstate.*.backup
+.terraform/
+.terraform.lock.hcl
+terraform.tfvars
+**/terraform.tfvars
+!terraform.tfvars.example
+
+# Terraform Plan Files
+*.tfplan
+*.plan
+
+# Environment Files (may contain secrets)
+.env
+.env.local
+.env.*.local
+*.env
+
+# IDE and Editor Files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Temporary Files
+tmp/
+temp/
+*.tmp
+
+# Backup Files
+*.bak
+*.backup
+*~
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Kubeconfig Files (may contain credentials)
+kubeconfig
+*.kubeconfig
+config.yaml
+
+# MicroK8s inspection reports
+inspection-report-*.tar.gz
+
+# Certificate Files
+*.pem
+*.key
+*.crt
+*.csr
+*.p12
+
+# SSH Keys
+id_rsa
+id_ed25519
+*.priv
+
+# Helm
+charts/*.tgz
+
+# Kustomize Build Output
+kustomization-output/
+
+# Local Testing
+test-output/
+scratch/
+
+# Personal Notes
+notes.txt
+todo.txt
+NOTES.md
+
+# OS-specific
+Thumbs.db
+.Trash-*
+
+# Documentation Drafts (keep published docs only)
+**/draft-*.md
+
+# Database dumps
+*.sql
+*.dump
+*.db
+*.sqlite
+
+# Archives
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
+
+# Sensitive Documentation (password sheets, etc.)
+passwords.txt
+credentials.txt
+secrets.txt
+api-keys.txt
+
+# MacOS
+.AppleDouble
+.LSOverride
+Icon
+._*
+
+# Windows
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# JetBrains
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# VS Code
+.history/
+*.code-workspace
+
+# Emacs
+\#*\#
+.\#*
+
+# Vim
+[._]*.s[a-v][a-z]
+[._]*.sw[a-p]
+[._]s[a-rt-v][a-z]
+[._]ss[a-gi-z]
+[._]sw[a-p]

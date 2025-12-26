@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pgadmin
+  namespace: ai
+  labels:
+    app: pgadmin
+    app.kubernetes.io/name: pgadmin
+    app.kubernetes.io/component: admin-ui
+    app.kubernetes.io/part-of: vx-home-ai-stack
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pgadmin
+  template:
+    metadata:
+      labels:
+        app: pgadmin
+        app.kubernetes.io/name: pgadmin
+        app.kubernetes.io/component: admin-ui
+    spec:
+      containers:
+      - name: pgadmin
+        image: dpage/pgadmin4:latest
+        ports:
+        - containerPort: 80
+          name: http
+          protocol: TCP
+        env:
+        - name: PGADMIN_DEFAULT_EMAIL
+          valueFrom:
+            secretKeyRef:
+              name: ai-secrets
+              key: PGADMIN_DEFAULT_EMAIL
+        - name: PGADMIN_DEFAULT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: ai-secrets
+              key: PGADMIN_DEFAULT_PASSWORD
+        - name: PGADMIN_DISABLE_POSTFIX
+          value: "1"
+        - name: PGADMIN_SERVER_JSON_FILE
+          value: /pgadmin4/servers.json
+        - name: SCRIPT_NAME
+          value: /pgadmin
+        volumeMounts:
+        - name: servers-json
+          mountPath: /pgadmin4/servers.json
+          subPath: servers.json
+          readOnly: true
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+      volumes:
+      - name: servers-json
+        configMap:
+          name: pgadmin-servers

@@ -1,0 +1,155 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: control-admin-portal
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: control-portal
+    app.kubernetes.io/component: ingress
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      rewrite ^(/pgadmin)$ $1/ redirect;
+    cert-manager.io/cluster-issuer: "vx-home-ca-issuer"
+spec:
+  ingressClassName: public
+  tls:
+    - secretName: control-portal-tls
+      hosts:
+        - control.adm.vx.home
+  rules:
+  - host: control.adm.vx.home
+    http:
+      paths:
+      # pgAdmin at /pgadmin
+      - path: /pgadmin(/|$)(.*)
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: pgadmin
+            port:
+              number: 80
+---
+# Optional: Root redirect to show available services
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: control-portal-index
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: control-portal
+data:
+  index.html: |
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>VX Home Control Portal</title>
+      <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; }
+        h1 { color: #333; }
+        .service { background: #f4f4f4; padding: 15px; margin: 10px 0; border-left: 4px solid #007bff; }
+        .service a { color: #007bff; text-decoration: none; font-weight: bold; }
+        .service a:hover { text-decoration: underline; }
+        .service p { color: #666; margin: 5px 0 0 0; }
+      </style>
+    </head>
+    <body>
+      <h1>VX Home Control Portal</h1>
+      <p>Administrative services for VX Home infrastructure</p>
+
+      <div class="service">
+        <a href="/pgadmin">pgAdmin</a>
+        <p>PostgreSQL database administration interface</p>
+      </div>
+
+      <div class="service">
+        <p><em>More admin services can be added here in the future</em></p>
+      </div>
+
+      <hr>
+      <p><small>For questions or issues, see <a href="https://github.com/YOUR_ORG/vx-home-infra">documentation</a></small></p>
+    </body>
+    </html>
+---
+# Deployment for the control portal landing page (optional)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: control-portal-nginx
+  namespace: ai
+  labels:
+    app: control-portal
+    app.kubernetes.io/name: control-portal
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: control-portal
+  template:
+    metadata:
+      labels:
+        app: control-portal
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: html
+          mountPath: /usr/share/nginx/html
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "50m"
+          limits:
+            memory: "64Mi"
+            cpu: "100m"
+      volumes:
+      - name: html
+        configMap:
+          name: control-portal-index
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: control-portal
+  namespace: ai
+  labels:
+    app: control-portal
+spec:
+  type: ClusterIP
+  selector:
+    app: control-portal
+  ports:
+  - port: 80
+    targetPort: 80
+---
+# Add root path route to control portal
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: control-root
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: control-portal
+  annotations:
+    cert-manager.io/cluster-issuer: "vx-home-ca-issuer"
+spec:
+  ingressClassName: public
+  tls:
+    - secretName: control-portal-tls
+      hosts:
+        - control.adm.vx.home
+  rules:
+  - host: control.adm.vx.home
+    http:
+      paths:
+      - path: /
+        pathType: Exact
+        backend:
+          service:
+            name: control-portal
+            port:
+              number: 80

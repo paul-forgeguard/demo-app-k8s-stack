@@ -1,0 +1,53 @@
+# Portainer CE Helm Values
+# This is a reference for the Portainer Helm installation
+# Actual installation is done via Makefile: make portainer-install
+#
+# These values are passed to the Helm chart via --set flags in the Makefile
+# Kept here for documentation and future customization
+
+# Service Configuration
+service:
+  type: ClusterIP  # Use Ingress instead of NodePort/LoadBalancer
+
+# TLS Configuration
+tls:
+  force: true  # Portainer serves HTTPS internally
+
+# Image Configuration
+image:
+  tag: lts  # Use LTS (Long Term Support) version for stability
+
+# Ingress Configuration
+ingress:
+  enabled: true
+  ingressClassName: public  # Matches MicroK8s Ingress controller
+  annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"  # Portainer uses HTTPS backend
+    cert-manager.io/cluster-issuer: "vx-home-ca-issuer"  # Auto-generate TLS certificate
+  tls:
+    - secretName: portainer-tls
+      hosts:
+        - ptnr.adm.vx.home
+  hosts:
+    - host: ptnr.adm.vx.home
+      paths:
+        - path: /
+          pathType: Prefix
+
+# Persistence (default behavior - uses StorageClass)
+# Portainer will automatically request a PVC from the default StorageClass (microk8s-hostpath)
+
+# Resources (optional - uncomment to set limits)
+# resources:
+#   requests:
+#     memory: "256Mi"
+#     cpu: "100m"
+#   limits:
+#     memory: "512Mi"
+#     cpu: "500m"
+
+# Additional notes:
+# - First login creates admin user (no pre-configuration needed)
+# - Admin password must be at least 12 characters
+# - Portainer auto-detects local Kubernetes environment
+# - Web UI accessible at: https://ptnr.adm.vx.home

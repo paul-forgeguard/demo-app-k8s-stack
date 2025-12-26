@@ -1,0 +1,26 @@
+# Kustomize configuration for label and annotation transformers
+nameReference:
+- kind: Service
+  version: v1
+  fieldSpecs:
+  - path: spec/template/spec/containers/env/valueFrom/secretKeyRef/name
+    kind: Deployment
+  - path: spec/template/spec/containers/env/valueFrom/configMapKeyRef/name
+    kind: Deployment
+
+commonLabels:
+- path: spec/selector/matchLabels
+  create: true
+  kind: Deployment
+
+- path: spec/selector/matchLabels
+  create: true
+  kind: StatefulSet
+
+- path: spec/selector
+  create: true
+  kind: Service
+
+varReference:
+- path: spec/rules/http/paths/backend/service/name
+  kind: Ingress

@@ -1,0 +1,64 @@
+# VX Home CA Chain for cert-manager
+#
+# This creates a proper CA hierarchy for homelab TLS:
+# 1. selfsigned-issuer: Bootstrap issuer (creates self-signed certs)
+# 2. vx-home-ca: CA certificate (signed by selfsigned-issuer)
+# 3. vx-home-ca-issuer: CA issuer (signs all application certificates)
+#
+# Usage in Ingress:
+#   annotations:
+#     cert-manager.io/cluster-issuer: "vx-home-ca-issuer"
+#   spec:
+#     tls:
+#       - secretName: myapp-tls
+#         hosts:
+#           - myapp.adm.vx.home
+#
+---
+# Step 1: Self-signed ClusterIssuer (bootstrap)
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned-issuer
+  labels:
+    app.kubernetes.io/name: cert-manager
+    app.kubernetes.io/component: ca-bootstrap
+spec:
+  selfSigned: {}
+---
+# Step 2: CA Certificate (signed by self-signed issuer)
+# This becomes the root CA for the homelab
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: vx-home-ca
+  namespace: cert-manager
+  labels:
+    app.kubernetes.io/name: cert-manager
+    app.kubernetes.io/component: ca-certificate
+spec:
+  isCA: true
+  commonName: "VX Home CA"
+  secretName: vx-home-ca-secret
+  duration: 87600h  # 10 years
+  renewBefore: 8760h  # Renew 1 year before expiry
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: selfsigned-issuer
+    kind: ClusterIssuer
+    group: cert-manager.io
+---
+# Step 3: CA ClusterIssuer (uses the CA certificate to sign other certs)
+# This is the issuer you reference in Ingress annotations
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: vx-home-ca-issuer
+  labels:
+    app.kubernetes.io/name: cert-manager
+    app.kubernetes.io/component: ca-issuer
+spec:
+  ca:
+    secretName: vx-home-ca-secret

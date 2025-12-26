@@ -1,0 +1,63 @@
+# Example Terraform Configuration for VX Home
+# This is a placeholder for future Phase 2 implementation
+#
+# Usage:
+#   1. Copy this file: cp main.tf.example main.tf
+#   2. Customize for your environment
+#   3. Run: terraform init && terraform plan && terraform apply
+
+terraform {
+  required_version = ">= 1.5.0"
+
+  required_providers {
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
+      version = "~> 2.23"
+    }
+    helm = {
+      source  = "hashicorp/helm"
+      version = "~> 2.11"
+    }
+    # Add DNS provider when ready (cloudflare, aws route53, etc.)
+  }
+
+  # Backend configuration (local for now)
+  backend "local" {
+    path = "terraform.tfstate"
+  }
+}
+
+# Kubernetes Provider
+provider "kubernetes" {
+  config_path = "~/.kube/config"
+  # Or for MicroK8s: config_path = "/var/snap/microk8s/current/credentials/client.config"
+}
+
+# Helm Provider
+provider "helm" {
+  kubernetes {
+    config_path = "~/.kube/config"
+  }
+}
+
+# Example: AI Namespace
+# resource "kubernetes_namespace_v1" "ai" {
+#   metadata {
+#     name = "ai"
+#     labels = {
+#       "app.kubernetes.io/part-of" = "vx-home-ai-stack"
+#       "environment" = "homelab"
+#     }
+#   }
+# }
+
+# Example: Open WebUI Deployment
+# module "openwebui" {
+#   source = "../../modules/openwebui"
+#
+#   namespace = kubernetes_namespace_v1.ai.metadata[0].name
+#   replicas  = var.openwebui_replicas
+#   domain    = var.domain
+# }
+
+# Variables would be defined in variables.tf and set in terraform.tfvars

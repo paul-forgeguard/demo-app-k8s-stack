@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kokoro
+  namespace: ai
+  labels:
+    app: kokoro
+    app.kubernetes.io/name: kokoro
+    app.kubernetes.io/component: tts
+    app.kubernetes.io/part-of: vx-home-ai-stack
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kokoro
+  template:
+    metadata:
+      labels:
+        app: kokoro
+        app.kubernetes.io/name: kokoro
+        app.kubernetes.io/component: tts
+    spec:
+      nodeSelector:
+        ai-stt-tts: "true"
+      containers:
+      - name: kokoro
+        image: ghcr.io/remsky/kokoro-fastapi-gpu:latest
+        ports:
+        - containerPort: 8880
+          name: http
+          protocol: TCP
+        env:
+        - name: DEFAULT_VOICE
+          value: "af_bella"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+            nvidia.com/gpu: 1
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8880
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8880
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
