@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: kokoro
+  labels:
+    app: kokoro
+    app.kubernetes.io/name: kokoro
+    app.kubernetes.io/component: tts
+spec:
+  type: ClusterIP
+  selector:
+    app: kokoro
+  ports:
+  - name: http
+    port: 8880
+    targetPort: 8880
+    protocol: TCP

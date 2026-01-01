@@ -3,6 +3,13 @@ secrets.yaml
 **/secrets.yaml
 k8s/**/secrets.yaml
 
+# Vault Keys (contains unseal keys and root token!)
+.vault-keys
+vault-keys.json
+
+# Helm Local Values (may contain secrets)
+helm-values/*.local.yaml
+
 # Terraform State Files (contain sensitive data)
 *.tfstate
 *.tfstate.backup

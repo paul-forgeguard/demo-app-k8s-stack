@@ -1,5 +1,5 @@
 apiVersion: apps/v1
-kind: Deployment
+kind: ReplicaSet
 metadata:
   name: openwebui
   namespace: ai
@@ -9,7 +9,7 @@ metadata:
     app.kubernetes.io/component: frontend
     app.kubernetes.io/part-of: vx-home-ai-stack
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app: openwebui

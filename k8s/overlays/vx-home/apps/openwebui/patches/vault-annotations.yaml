@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openwebui
+spec:
+  template:
+    metadata:
+      annotations:
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/role: "openwebui-role"
+        vault.hashicorp.com/agent-inject-secret-env: "ai/data/openwebui"
+        vault.hashicorp.com/agent-inject-template-env: |
+          {{- with secret "ai/data/openwebui" -}}
+          export OPENAI_API_KEY="{{ .Data.data.OPENAI_API_KEY }}"
+          export DATABASE_URL="{{ .Data.data.DATABASE_URL }}"
+          export POSTGRES_USER="{{ .Data.data.POSTGRES_USER }}"
+          export POSTGRES_PASSWORD="{{ .Data.data.POSTGRES_PASSWORD }}"
+          export POSTGRES_DB="{{ .Data.data.POSTGRES_DB }}"
+          {{- end -}}

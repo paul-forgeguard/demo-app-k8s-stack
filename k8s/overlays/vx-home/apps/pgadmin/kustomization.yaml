@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: ai
+
+resources:
+  - ../../../../base/pgadmin
+
+commonLabels:
+  app.kubernetes.io/part-of: vx-home-ai-stack
+
+patches:
+  # K8s Secret environment variables (until Vault integration is complete)
+  - path: patches/secrets-env.yaml
+    target:
+      kind: Deployment
+      name: pgadmin
+  # TODO: Re-enable when Vault Agent file-to-env integration is complete
+  # - path: patches/vault-annotations.yaml
+  #   target:
+  #     kind: Deployment
+  #     name: pgadmin

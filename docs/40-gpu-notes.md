@@ -7,8 +7,8 @@
 - ✅ pgvector: CPU
 - ✅ Redis: CPU
 - ✅ pgAdmin: CPU
-- ✅ Kokoro TTS: CPU (pinned to ai-stt-tts node for future GPU)
-- ✅ Faster-Whisper STT: CPU (pinned to ai-stt-tts node for future GPU)
+- ✅ Kokoro TTS: CPU (pinned to gpu node for future GPU)
+- ✅ Faster-Whisper STT: CPU (pinned to gpu node for future GPU)
 
 **Why CPU-Only Now**:
 1. Simpler initial setup (no NVIDIA drivers/runtime complexity)

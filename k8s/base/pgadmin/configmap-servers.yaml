@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pgadmin-servers
+  labels:
+    app: pgadmin
+    app.kubernetes.io/name: pgadmin
+    app.kubernetes.io/component: admin-ui
+data:
+  servers.json: |
+    {
+      "Servers": {
+        "1": {
+          "Name": "pgvector",
+          "Group": "AI Stack",
+          "Host": "pgvector",
+          "Port": 5432,
+          "MaintenanceDB": "postgres",
+          "Username": "openwebui",
+          "SSLMode": "prefer"
+        }
+      }
+    }

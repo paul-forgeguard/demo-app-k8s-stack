@@ -202,7 +202,7 @@ kubectl describe pod pgvector-0 -n ai
    kubectl get nodes --show-labels
 
    # Fix: Add label to node or remove nodeSelector
-   kubectl label node <node-name> ai-stt-tts=true
+   kubectl label node <node-name> gpu=true
    ```
 
 2. **Insufficient resources** (CPU/memory/GPU):

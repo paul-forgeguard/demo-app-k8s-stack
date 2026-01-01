@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Script: 08-label-node.sh
-# Purpose: Label node with ai-stt-tts=true for TTS/STT pod placement
+# Purpose: Label node with gpu=true for GPU workload pod placement
 # Prerequisites: MicroK8s running
 # Author: VX Home Infrastructure
 #
@@ -18,7 +18,7 @@ log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
-log_info "Labeling node for TTS/STT workloads..."
+log_info "Labeling node for GPU workloads..."
 
 # Check MicroK8s is running
 if ! microk8s status | grep -q "microk8s is running"; then
@@ -48,7 +48,7 @@ fi
 log_info "Node name: $NODE_NAME"
 
 # Label to apply
-LABEL_KEY="ai-stt-tts"
+LABEL_KEY="gpu"
 LABEL_VALUE="true"
 
 # Check if label already exists
@@ -91,8 +91,8 @@ microk8s kubectl get node "$NODE_NAME" --show-labels
 echo ""
 log_warn "Why this label matters:"
 echo "  - Kokoro (TTS) and Faster-Whisper (STT) use nodeSelector"
-echo "  - They will ONLY schedule on nodes with label: ai-stt-tts=true"
-echo "  - This enables future scaling: add CPU-only nodes without TTS/STT"
+echo "  - They will ONLY schedule on nodes with label: gpu=true"
+echo "  - Non-GPU nodes should be labeled gpu=false"
 echo ""
 
 log_info "Label usage in Deployment YAML:"
@@ -101,7 +101,7 @@ cat <<EOF
     template:
       spec:
         nodeSelector:
-          ai-stt-tts: "true"  # Matches this node
+          gpu: "true"  # Matches this node
 EOF
 
 echo ""

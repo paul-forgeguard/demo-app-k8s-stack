@@ -54,7 +54,7 @@ This document provides a deep-dive into the architectural decisions and design r
 │  │                                                          │       │
 │  │  ┌───────────────────────────────────────┐              │       │
 │  │  │  AI Services Layer                     │              │       │
-│  │  │  (nodeSelector: ai-stt-tts=true)      │              │       │
+│  │  │  (nodeSelector: gpu=true)             │              │       │
 │  │  │                                        │              │       │
 │  │  │  ┌──────────────┐  ┌───────────────┐ │              │       │
 │  │  │  │   Kokoro     │  │ Faster-Whisper│ │              │       │
@@ -152,7 +152,7 @@ This document provides a deep-dive into the architectural decisions and design r
 ```yaml
 # NodeSelector (simple, our choice)
 nodeSelector:
-  ai-stt-tts: "true"
+  gpu: "true"
 
 # NodeAffinity (complex, more powerful)
 affinity:
@@ -160,7 +160,7 @@ affinity:
     requiredDuringSchedulingIgnoredDuringExecution:
       nodeSelectorTerms:
       - matchExpressions:
-        - key: ai-stt-tts
+        - key: gpu
           operator: In
           values:
           - "true"
@@ -283,8 +283,8 @@ This is fundamental K8s networking that CKA tests extensively.
 | pgvector | CPU | Database operations, CPU-bound for queries |
 | Redis | CPU | In-memory cache, CPU-bound for operations |
 | pgAdmin | CPU | Admin UI, minimal resources needed |
-| Kokoro TTS | CPU now, GPU Phase 2 | Pinned to ai-stt-tts node for future GPU |
-| Faster-Whisper STT | CPU now, GPU Phase 2 | Pinned to ai-stt-tts node for future GPU |
+| Kokoro TTS | CPU now, GPU Phase 2 | Pinned to gpu node for future GPU |
+| Faster-Whisper STT | CPU now, GPU Phase 2 | Pinned to gpu node for future GPU |
 
 **GPU Challenges on A2 (Single GPU)**:
 - Default K8s scheduling: entire GPU to one pod

@@ -83,7 +83,7 @@ microk8s status
 ```bash
 microk8s kubectl version --short
 ```
-**Should show:** Server Version: v1.32.x
+**Should show:** Server Version: v1.35.x
 
 **Check node:**
 ```bash
@@ -202,9 +202,9 @@ firewall-cmd --list-all
 
 **Verify:**
 ```bash
-microk8s kubectl get nodes --show-labels | grep ai-stt-tts
+microk8s kubectl get nodes --show-labels | grep gpu
 ```
-**Should show:** `ai-stt-tts=true` in the labels
+**Should show:** `gpu=true` in the labels
 
 ---
 
@@ -624,7 +624,7 @@ kd pod -n ai openwebui-xxxxx
 
 ## Summary of What You Now Have
 
-✅ **MicroK8s** - Kubernetes 1.32 cluster
+✅ **MicroK8s** - Kubernetes 1.35 cluster
 ✅ **cert-manager** - TLS certificates via vx-home-ca-issuer
 ✅ **Portainer** - Web UI at https://ptnr.adm.vx.home
 ✅ **Open WebUI** - AI interface at https://ai.adm.vx.home

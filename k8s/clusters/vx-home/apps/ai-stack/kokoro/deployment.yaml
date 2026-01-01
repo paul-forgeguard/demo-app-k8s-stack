@@ -21,7 +21,7 @@ spec:
         app.kubernetes.io/component: tts
     spec:
       nodeSelector:
-        ai-stt-tts: "true"
+        gpu: "true"
       containers:
       - name: kokoro
         image: ghcr.io/remsky/kokoro-fastapi-gpu:latest

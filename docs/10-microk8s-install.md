@@ -127,7 +127,7 @@ getenforce
 **Why MicroK8s uses Snap**:
 - Single install command across distros (Ubuntu, CentOS, Fedora, etc.)
 - Easy rollbacks (`snap revert microk8s`)
-- Channel-based versioning (1.32/stable, 1.31/stable, etc.)
+- Channel-based versioning (1.35/stable, 1.34/stable, etc.)
 
 **CKA Learning Point**: In production, you may use `kubeadm` (not snap-based), but understanding package management is valuable.
 
@@ -233,17 +233,17 @@ sudo ./scripts/setup/03-install-microk8s.sh
 
 **What it does**:
 
-1. **Install MicroK8s snap** (channel 1.32/stable):
+1. **Install MicroK8s snap** (channel 1.35/stable):
    ```bash
-   sudo snap install microk8s --classic --channel=1.32/stable
+   sudo snap install microk8s --classic --channel=1.35/stable
    ```
    - `--classic`: Unconfined snap (full system access)
-   - `--channel=1.32/stable`: Kubernetes 1.32 (current stable as of 2025)
+   - `--channel=1.35/stable`: Kubernetes 1.35 (current stable as of 2025)
 
    **Channel Explanation**:
-   - `1.32/stable`: Production-ready Kubernetes 1.32
-   - `1.32/candidate`: Pre-release testing
-   - `1.32/edge`: Bleeding-edge (not recommended)
+   - `1.35/stable`: Production-ready Kubernetes 1.35
+   - `1.35/candidate`: Pre-release testing
+   - `1.35/edge`: Bleeding-edge (not recommended)
    - `latest/stable`: Always latest K8s version (auto-updates)
 
 2. **Add user to microk8s group**:
@@ -278,12 +278,12 @@ microk8s status
 
 # Check Kubernetes version
 microk8s kubectl version --short
-# Output: Server Version: v1.32.X
+# Output: Server Version: v1.35.X
 
 # Check nodes
 microk8s kubectl get nodes
 # Output: NAME     STATUS   ROLES   AGE   VERSION
-#         <hostname>   Ready    <none>  1m    v1.32.X
+#         <hostname>   Ready    <none>  1m    v1.35.X
 ```
 
 ### CKA Learning Point: Kubernetes Components
@@ -628,10 +628,10 @@ metadata:
   labels:
     kubernetes.io/hostname: worker-1
     node-role.kubernetes.io/worker: ""
-    ai-stt-tts: "true"  # Our custom label
+    gpu: "true"  # Our custom label
 ```
 
-### Why Label for ai-stt-tts?
+### Why Label for GPU?
 
 **Current State** (single-node):
 - All pods run on the same node anyway
@@ -639,7 +639,7 @@ metadata:
 
 **Future State** (multi-node, Phase 2):
 - Add a second node (CPU-only)
-- GPU node labeled `ai-stt-tts=true`
+- GPU node labeled `gpu=true`, non-GPU nodes labeled `gpu=false`
 - TTS/STT pods pinned to GPU node via nodeSelector
 - Other pods can run on either node
 
@@ -660,7 +660,7 @@ sudo ./scripts/setup/08-label-node.sh
 NODE_NAME=$(microk8s kubectl get nodes -o jsonpath='{.items[0].metadata.name}')
 
 # Apply the label
-microk8s kubectl label node $NODE_NAME ai-stt-tts=true
+microk8s kubectl label node $NODE_NAME gpu=true
 
 # Verify
 microk8s kubectl get nodes --show-labels
@@ -670,13 +670,13 @@ microk8s kubectl get nodes --show-labels
 
 ```bash
 # Check node labels
-microk8s kubectl get nodes --show-labels | grep ai-stt-tts
-# Output: <node-name>   Ready   <none>   10m   v1.32.X   ...ai-stt-tts=true...
+microk8s kubectl get nodes --show-labels | grep gpu
+# Output: <node-name>   Ready   <none>   10m   v1.35.X   ...gpu=true...
 
 # Describe node (detailed view)
-microk8s kubectl describe node <node-name> | grep ai-stt-tts
+microk8s kubectl describe node <node-name> | grep gpu
 # Output: Labels:  ...
-#                  ai-stt-tts=true
+#                  gpu=true
 ```
 
 ### How Pods Use the Label
@@ -688,12 +688,12 @@ spec:
   template:
     spec:
       nodeSelector:
-        ai-stt-tts: "true"  # Only schedule on nodes with this label
+        gpu: "true"  # Only schedule on nodes with this label
 ```
 
 **Scheduler Behavior**:
 1. Pod created with nodeSelector
-2. Scheduler filters nodes: only those with `ai-stt-tts=true`
+2. Scheduler filters nodes: only those with `gpu=true`
 3. If no matching nodes: Pod stays Pending
 4. If matching nodes: Pod scheduled to one of them
 
@@ -755,8 +755,8 @@ microk8s kubectl get nodes
 # Output: STATUS = Ready
 
 # Node labeled
-microk8s kubectl get nodes --show-labels | grep ai-stt-tts
-# Output: should contain ai-stt-tts=true
+microk8s kubectl get nodes --show-labels | grep gpu
+# Output: should contain gpu=true
 ```
 
 ### 4. Network Connectivity

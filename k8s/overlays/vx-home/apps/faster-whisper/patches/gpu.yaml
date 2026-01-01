@@ -1,0 +1,14 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: faster-whisper
+spec:
+  template:
+    spec:
+      nodeSelector:
+        gpu: "true"
+      containers:
+      - name: faster-whisper
+        resources:
+          limits:
+            nvidia.com/gpu: 1

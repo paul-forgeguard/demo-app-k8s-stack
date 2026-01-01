@@ -1,0 +1,16 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pgadmin
+spec:
+  template:
+    metadata:
+      annotations:
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/role: "pgadmin-role"
+        vault.hashicorp.com/agent-inject-secret-env: "ai/data/pgadmin"
+        vault.hashicorp.com/agent-inject-template-env: |
+          {{- with secret "ai/data/pgadmin" -}}
+          export PGADMIN_DEFAULT_EMAIL="{{ .Data.data.PGADMIN_DEFAULT_EMAIL }}"
+          export PGADMIN_DEFAULT_PASSWORD="{{ .Data.data.PGADMIN_DEFAULT_PASSWORD }}"
+          {{- end -}}

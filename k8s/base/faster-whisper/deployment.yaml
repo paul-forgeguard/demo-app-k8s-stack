@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: faster-whisper
+  labels:
+    app: faster-whisper
+    app.kubernetes.io/name: faster-whisper
+    app.kubernetes.io/component: stt
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: faster-whisper
+  template:
+    metadata:
+      labels:
+        app: faster-whisper
+        app.kubernetes.io/name: faster-whisper
+        app.kubernetes.io/component: stt
+    spec:
+      containers:
+      - name: faster-whisper
+        image: fedirz/faster-whisper-server:latest-cuda
+        ports:
+        - containerPort: 8000
+          name: http
+          protocol: TCP
+        env:
+        - name: ASR_MODEL
+          value: "base"
+        - name: ASR_ENGINE
+          value: "faster_whisper"
+        - name: WHISPER__INFERENCE_DEVICE
+          value: "cuda"
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "8Gi"
+            cpu: "2000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 60
+          periodSeconds: 15
+          timeoutSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 3

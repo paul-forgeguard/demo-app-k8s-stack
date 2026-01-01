@@ -1,0 +1,27 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# VX Home AI Stack Overlay
+# This overlay customizes the base manifests for the vx-home environment
+
+resources:
+  # Namespace
+  - namespaces/ai.yaml
+
+  # cert-manager ClusterIssuers
+  - cert-manager/clusterissuer.yaml
+
+  # Ingress resources
+  - ingress/openwebui.yaml
+
+  # Apps (each has its own kustomization with patches)
+  - apps/openwebui
+  - apps/pgvector
+  - apps/redis
+  - apps/pgadmin
+  - apps/kokoro
+  - apps/faster-whisper
+
+commonLabels:
+  app.kubernetes.io/managed-by: kustomize
+  environment: vx-home

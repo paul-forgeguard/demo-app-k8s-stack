@@ -1,0 +1,16 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis
+spec:
+  volumeClaimTemplates:
+  - metadata:
+      name: redisdata
+      labels:
+        app: redis
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: ceph-rbd
+      resources:
+        requests:
+          storage: 10Gi

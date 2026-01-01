@@ -46,7 +46,7 @@ Once deployed, services will be available at (example FQDNs):
 │  │  Kokoro   │  │  Whisper  │  │    pgAdmin     │         │
 │  │   (TTS)   │  │   (STT)   │  │  (Deployment)  │         │
 │  │nodeSelect:│  │nodeSelect:│  └────────────────┘         │
-│  │ai-stt-tts │  │ai-stt-tts │                             │
+│  │  gpu      │  │  gpu      │                             │
 │  └───────────┘  └───────────┘                             │
 ├─────────────────────────────────────────────────────────────┤
 │  Storage: hostpath-storage (single-node PVCs)              │
@@ -56,7 +56,7 @@ Once deployed, services will be available at (example FQDNs):
 ### Design Decisions
 
 - **CPU-only for most services**: Open WebUI and pgvector run on CPU to conserve GPU resources
-- **GPU pinning for TTS/STT**: Only Kokoro and Faster-Whisper are pinned to nodes with label `ai-stt-tts=true`
+- **GPU pinning for TTS/STT**: Only Kokoro and Faster-Whisper are pinned to nodes with label `gpu=true`
 - **StatefulSets for databases**: Ensures stable pod identity and persistent storage
 - **Kustomize for manifests**: Native kubectl integration, easier to learn than Helm
 - **hostpath-storage**: Appropriate for single-node homelab (documented migration path to Longhorn/NFS for multi-node)

@@ -17,7 +17,7 @@ This guide covers deploying and configuring the complete AI stack:
 Ensure you've completed:
 - ✅ [MicroK8s Installation](10-microk8s-install.md)
 - ✅ [Portainer Installation](20-portainer.md)
-- ✅ Node labeled with `ai-stt-tts=true`
+- ✅ Node labeled with `gpu=true`
 
 ## Deployment Steps
 

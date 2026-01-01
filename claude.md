@@ -90,7 +90,7 @@ This file provides instructions for future Claude Code sessions (or human mainta
 4. Note any breaking changes in README or relevant doc
 
 **Current versions (as of 2025-12-22):**
-- MicroK8s: 1.32/stable channel
+- MicroK8s: 1.35/stable channel
 - Open WebUI: v0.6.42
 - Postgres (pgvector): pg16
 - Redis: 8-alpine

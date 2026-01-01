@@ -21,7 +21,7 @@ spec:
         app.kubernetes.io/component: stt
     spec:
       nodeSelector:
-        ai-stt-tts: "true"
+        gpu: "true"
       containers:
       - name: faster-whisper
         image: fedirz/faster-whisper-server:latest-cuda

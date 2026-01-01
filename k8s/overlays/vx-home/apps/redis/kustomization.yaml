@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: ai
+
+resources:
+  - ../../../../base/redis
+
+commonLabels:
+  app.kubernetes.io/part-of: vx-home-ai-stack
+
+patches:
+  # Storage class for volumeClaimTemplate
+  - path: patches/storage-ceph.yaml
+    target:
+      kind: StatefulSet
+      name: redis
+  # fsGroup for Ceph RBD volume permissions (Redis runs as UID 999)
+  - path: patches/security-context.yaml
+    target:
+      kind: StatefulSet
+      name: redis

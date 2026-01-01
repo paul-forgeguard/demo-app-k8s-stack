@@ -1,0 +1,14 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kokoro
+spec:
+  template:
+    spec:
+      nodeSelector:
+        gpu: "true"
+      containers:
+      - name: kokoro
+        resources:
+          limits:
+            nvidia.com/gpu: 1

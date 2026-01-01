@@ -29,14 +29,14 @@ kubectl get nodes
 
 ```bash
 # Check node labels (needed for TTS/STT scheduling)
-kubectl get nodes --show-labels | grep ai-stt-tts
+kubectl get nodes --show-labels | grep gpu
 ```
 
-**Expected output:** `ai-stt-tts=true`
+**Expected output:** `gpu=true`
 
 If missing, label your node:
 ```bash
-kubectl label node vx-app-00.adm.vx.home ai-stt-tts=true
+kubectl label node vx-app-00.adm.vx.home gpu=true
 ```
 
 ---
@@ -285,7 +285,7 @@ kubectl get pods -n ai -l app=pgadmin
 
 ## Phase 5: Deploy AI Services (TTS/STT)
 
-These services have a `nodeSelector` requiring `ai-stt-tts=true` label. They won't schedule if the label is missing.
+These services have a `nodeSelector` requiring `gpu=true` label. They won't schedule if the label is missing.
 
 ### Step 5a: Deploy Kokoro (Text-to-Speech)
 
@@ -298,7 +298,7 @@ kubectl apply -f k8s/clusters/vx-home/apps/ai-stack/kokoro/service.yaml
 ```
 
 **Key configuration:**
-- Uses `nodeSelector: ai-stt-tts: "true"` - only schedules on labeled nodes
+- Uses `nodeSelector: gpu: "true"` - only schedules on labeled nodes
 - Default voice: `af_bella`
 - Health endpoint: `/health` on port 8880
 - Service available at `kokoro:8880`
@@ -314,7 +314,7 @@ kubectl apply -f k8s/clusters/vx-home/apps/ai-stack/faster-whisper/service.yaml
 ```
 
 **Key configuration:**
-- Also requires `ai-stt-tts: "true"` node label
+- Also requires `gpu: "true"` node label
 - Uses the `base` model (good balance of speed/accuracy)
 - Configured for CPU inference (`WHISPER__INFERENCE_DEVICE: cpu`)
 - Service available at `faster-whisper:8000`
@@ -926,6 +926,719 @@ See `docs/45-openwebui-env-reference.md` for complete environment variable docum
 
 ---
 
+## Phase 14: Enable MicroCeph Storage
+
+MicroCeph provides enterprise-grade distributed storage (Ceph) for Kubernetes. It replaces `hostpath-storage` with proper CSI-backed storage that supports:
+- **CephFS (ReadWriteMany)** - Shared storage for multiple pods
+- **RBD (ReadWriteOnce)** - Block storage for databases
+
+### Step 14a: Install MicroCeph Snap
+
+```bash
+sudo snap install microceph --channel=latest/stable
+```
+
+### Step 14b: Bootstrap Single-Node Cluster
+
+```bash
+sudo microceph cluster bootstrap
+sudo microceph status
+```
+
+**Expected output:**
+```
+MicroCeph deployment summary:
+- ceph-mds: 1
+- ceph-mgr: 1
+- ceph-mon: 1
+```
+
+### Step 14c: Add OSD (Dedicated Disk - Recommended)
+
+If you have a dedicated disk for Ceph storage (recommended):
+
+```bash
+# Identify your disk (should show no partitions/filesystem)
+lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT
+
+# Verify disk is clean (should show nothing)
+sudo wipefs /dev/sdb
+
+# Add directly to MicroCeph
+sudo microceph disk add /dev/sdb --wipe
+```
+
+Verify:
+```bash
+sudo microceph.ceph status
+```
+
+**Expected:** `HEALTH_OK` or `HEALTH_WARN` (warn is normal for single-node)
+
+<details>
+<summary><strong>Alternative: Loop Device (No Spare Disk)</strong></summary>
+
+If you don't have a dedicated disk, use a file-backed loop device:
+
+```bash
+# Create directory and loop file (50GB minimum)
+sudo mkdir -p /var/lib/microceph-loop
+sudo truncate -s 50G /var/lib/microceph-loop/osd.img
+
+# Create loop device
+LOOP_DEV=$(sudo losetup -f --show /var/lib/microceph-loop/osd.img)
+echo "Created loop device: $LOOP_DEV"
+
+# Add to MicroCeph
+sudo microceph disk add $LOOP_DEV --wipe
+
+# Create systemd service for persistence across reboots
+sudo tee /etc/systemd/system/microceph-loop.service << 'EOF'
+[Unit]
+Description=Setup loop device for MicroCeph OSD
+Before=snap.microceph.daemon.service
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/sbin/losetup /dev/loop100 /var/lib/microceph-loop/osd.img
+ExecStop=/sbin/losetup -d /dev/loop100
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable microceph-loop.service
+```
+
+**Note:** Loop device has ~30-50% I/O overhead vs dedicated disk.
+</details>
+
+### Step 14d: Enable rook-ceph Addon
+
+```bash
+sudo microk8s enable rook-ceph
+```
+
+Wait 2-3 minutes for pods:
+```bash
+microk8s kubectl get pods -n rook-ceph -w
+```
+
+### Step 14e: Connect MicroK8s to MicroCeph
+
+```bash
+sudo microk8s connect-external-ceph
+```
+
+### Step 14f: Configure Pool for Single-Node
+
+**Critical:** The `connect-external-ceph` command creates a pool with default replication (size=3). With only 1 OSD, this causes PGs to be stuck `inactive/undersized` and PVCs will hang forever.
+
+```bash
+# Allow single-replica pools
+sudo microceph.ceph config set global mon_allow_pool_size_one true
+
+# Set global defaults
+sudo microceph.ceph config set global osd_pool_default_size 1
+sudo microceph.ceph config set global osd_pool_default_min_size 1
+
+# Fix the existing pool
+sudo microceph.ceph osd pool set microk8s-rbd0 size 1 --yes-i-really-mean-it
+sudo microceph.ceph osd pool set microk8s-rbd0 min_size 1
+
+# Verify health (should now show HEALTH_OK or minor warnings)
+sudo microceph.ceph health
+```
+
+**Expected:** `HEALTH_OK` or `HEALTH_WARN` (warn about auth insecure is normal).
+
+> When expanding to multi-node later, increase these values for redundancy.
+
+### Step 14g: Enable CephFS (for RWX volumes)
+
+The `connect-external-ceph` command only creates the `ceph-rbd` StorageClass. For ReadWriteMany (RWX) volumes needed for horizontally-scalable applications like Open WebUI, enable CephFS:
+
+```bash
+./scripts/setup/16-enable-cephfs.sh
+```
+
+This script creates:
+1. CephFS data and metadata pools
+2. The CephFS filesystem
+3. A dedicated CephFS user for Kubernetes
+4. Kubernetes secrets and StorageClass
+
+**What this enables:**
+- **cephfs StorageClass**: ReadWriteMany (RWX) - multiple pods can mount the same volume
+- Use for: Open WebUI, shared configs, logs, any horizontally-scaled workload
+
+### Step 14h: Verify StorageClasses
+
+```bash
+microk8s kubectl get sc
+```
+
+**Expected output (after CephFS enablement):**
+```
+NAME                          PROVISIONER                    ...
+ceph-rbd                      rook-ceph.rbd.csi.ceph.com    ...
+cephfs                        rook-ceph.cephfs.csi.ceph.com ...
+microk8s-hostpath (default)   microk8s.io/hostpath          ...
+```
+
+> **Note:** If you skipped Step 14g, only `ceph-rbd` will be available.
+
+### Step 14i: Test PVC Binding
+
+**Test RBD (ReadWriteOnce):**
+```bash
+microk8s kubectl apply -f - <<EOF
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: test-rbd
+  namespace: default
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: ceph-rbd
+  resources:
+    requests:
+      storage: 1Gi
+EOF
+
+microk8s kubectl get pvc test-rbd -w
+# Wait for Bound, then cleanup
+microk8s kubectl delete pvc test-rbd
+```
+
+**Test CephFS (ReadWriteMany) - if Step 14g was completed:**
+```bash
+microk8s kubectl apply -f - <<EOF
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: test-cephfs
+  namespace: default
+spec:
+  accessModes: [ReadWriteMany]
+  storageClassName: cephfs
+  resources:
+    requests:
+      storage: 1Gi
+EOF
+
+microk8s kubectl get pvc test-cephfs -w
+# Wait for Bound, then cleanup
+microk8s kubectl delete pvc test-cephfs
+```
+
+---
+
+## Phase 15: Install HashiCorp Vault
+
+Vault provides centralized secrets management with audit logging and fine-grained access control.
+
+### Step 15a: Add Helm Repository
+
+```bash
+microk8s helm3 repo add hashicorp https://helm.releases.hashicorp.com
+microk8s helm3 repo update
+```
+
+### Step 15b: Create Vault Namespace
+
+```bash
+microk8s kubectl create namespace vault
+```
+
+### Step 15c: Install Vault via Helm
+
+```bash
+microk8s helm3 install vault hashicorp/vault \
+  --namespace vault \
+  -f helm-values/vault-values.yaml
+```
+
+### Step 15d: Wait for Pod
+
+```bash
+microk8s kubectl get pods -n vault -w
+```
+
+**Note:** Pod will show `0/1 Ready` until initialized - this is expected.
+
+### Step 15e: Initialize Vault
+
+```bash
+microk8s kubectl exec -n vault vault-0 -- vault operator init \
+  -key-shares=1 \
+  -key-threshold=1 \
+  -format=json > .vault-keys
+```
+
+**CRITICAL:** Back up `.vault-keys` securely! Contains unseal key and root token.
+
+### Step 15f: Unseal Vault
+
+```bash
+UNSEAL_KEY=$(cat .vault-keys | jq -r '.unseal_keys_b64[0]')
+microk8s kubectl exec -n vault vault-0 -- vault operator unseal $UNSEAL_KEY
+```
+
+### Step 15g: Verify Status
+
+```bash
+microk8s kubectl exec -n vault vault-0 -- vault status
+```
+
+**Expected:** `Sealed: false`
+
+---
+
+## Phase 16: Configure Vault
+
+### Step 16a: Login with Root Token
+
+```bash
+ROOT_TOKEN=$(cat .vault-keys | jq -r '.root_token')
+microk8s kubectl exec -n vault vault-0 -- vault login $ROOT_TOKEN
+```
+
+### Step 16b: Enable Kubernetes Auth
+
+```bash
+microk8s kubectl exec -n vault vault-0 -- vault auth enable kubernetes
+
+microk8s kubectl exec -n vault vault-0 -- vault write auth/kubernetes/config \
+  kubernetes_host="https://kubernetes.default.svc:443"
+```
+
+### Step 16c: Enable KV Secrets Engine
+
+```bash
+microk8s kubectl exec -n vault vault-0 -- vault secrets enable -path=ai kv-v2
+```
+
+### Step 16d: Create Policies
+
+```bash
+# OpenWebUI policy
+microk8s kubectl exec -n vault vault-0 -- vault policy write openwebui-policy - <<'EOF'
+path "ai/data/openwebui" {
+  capabilities = ["read"]
+}
+path "ai/metadata/openwebui" {
+  capabilities = ["read", "list"]
+}
+EOF
+
+# PgVector policy
+microk8s kubectl exec -n vault vault-0 -- vault policy write pgvector-policy - <<'EOF'
+path "ai/data/pgvector" {
+  capabilities = ["read"]
+}
+path "ai/metadata/pgvector" {
+  capabilities = ["read", "list"]
+}
+EOF
+
+# PgAdmin policy
+microk8s kubectl exec -n vault vault-0 -- vault policy write pgadmin-policy - <<'EOF'
+path "ai/data/pgadmin" {
+  capabilities = ["read"]
+}
+path "ai/metadata/pgadmin" {
+  capabilities = ["read", "list"]
+}
+EOF
+```
+
+### Step 16e: Create Roles
+
+```bash
+# OpenWebUI role
+microk8s kubectl exec -n vault vault-0 -- vault write auth/kubernetes/role/openwebui-role \
+  bound_service_account_names=openwebui \
+  bound_service_account_namespaces=ai \
+  policies=openwebui-policy \
+  ttl=1h
+
+# PgVector role
+microk8s kubectl exec -n vault vault-0 -- vault write auth/kubernetes/role/pgvector-role \
+  bound_service_account_names=pgvector \
+  bound_service_account_namespaces=ai \
+  policies=pgvector-policy \
+  ttl=1h
+
+# PgAdmin role
+microk8s kubectl exec -n vault vault-0 -- vault write auth/kubernetes/role/pgadmin-role \
+  bound_service_account_names=pgadmin \
+  bound_service_account_namespaces=ai \
+  policies=pgadmin-policy \
+  ttl=1h
+```
+
+### Step 16f: Migrate Secrets from Kubernetes to Vault
+
+```bash
+# Extract existing secrets
+OPENAI_KEY=$(microk8s kubectl get secret ai-secrets -n ai -o jsonpath='{.data.OPENAI_API_KEY}' | base64 -d)
+DATABASE_URL=$(microk8s kubectl get secret ai-secrets -n ai -o jsonpath='{.data.DATABASE_URL}' | base64 -d)
+POSTGRES_DB=$(microk8s kubectl get secret ai-secrets -n ai -o jsonpath='{.data.POSTGRES_DB}' | base64 -d)
+POSTGRES_USER=$(microk8s kubectl get secret ai-secrets -n ai -o jsonpath='{.data.POSTGRES_USER}' | base64 -d)
+POSTGRES_PASSWORD=$(microk8s kubectl get secret ai-secrets -n ai -o jsonpath='{.data.POSTGRES_PASSWORD}' | base64 -d)
+PGADMIN_EMAIL=$(microk8s kubectl get secret ai-secrets -n ai -o jsonpath='{.data.PGADMIN_DEFAULT_EMAIL}' | base64 -d)
+PGADMIN_PASSWORD=$(microk8s kubectl get secret ai-secrets -n ai -o jsonpath='{.data.PGADMIN_DEFAULT_PASSWORD}' | base64 -d)
+
+# Write to Vault
+microk8s kubectl exec -n vault vault-0 -- vault kv put ai/openwebui \
+  OPENAI_API_KEY="$OPENAI_KEY" \
+  DATABASE_URL="$DATABASE_URL" \
+  POSTGRES_DB="$POSTGRES_DB" \
+  POSTGRES_USER="$POSTGRES_USER" \
+  POSTGRES_PASSWORD="$POSTGRES_PASSWORD"
+
+microk8s kubectl exec -n vault vault-0 -- vault kv put ai/pgvector \
+  POSTGRES_DB="$POSTGRES_DB" \
+  POSTGRES_USER="$POSTGRES_USER" \
+  POSTGRES_PASSWORD="$POSTGRES_PASSWORD"
+
+microk8s kubectl exec -n vault vault-0 -- vault kv put ai/pgadmin \
+  PGADMIN_DEFAULT_EMAIL="$PGADMIN_EMAIL" \
+  PGADMIN_DEFAULT_PASSWORD="$PGADMIN_PASSWORD"
+```
+
+### Step 16g: Verify Secrets in Vault
+
+```bash
+microk8s kubectl exec -n vault vault-0 -- vault kv list ai/
+microk8s kubectl exec -n vault vault-0 -- vault kv get ai/openwebui
+```
+
+### Step 16h: Apply Vault Ingress
+
+```bash
+microk8s kubectl apply -f k8s/overlays/vx-home/platform/vault/ingress.yaml
+```
+
+Access Vault UI at: https://vault.adm.vx.home
+
+---
+
+## Phase 17: Migrate to Kustomize Overlays
+
+The new manifest structure uses Kustomize base/overlay pattern for better maintainability.
+
+### Step 17a: Understand the New Structure
+
+```
+k8s/
+├── base/                    # Generic manifests (no namespace, no secrets)
+│   ├── openwebui/
+│   ├── pgvector/
+│   ├── redis/
+│   ├── pgadmin/
+│   ├── kokoro/
+│   └── faster-whisper/
+├── overlays/
+│   └── vx-home/            # Environment-specific patches
+│       ├── kustomization.yaml
+│       ├── namespaces/
+│       ├── cert-manager/
+│       ├── ingress/
+│       ├── platform/vault/
+│       └── apps/           # App-specific patches (Vault annotations, GPU, storage)
+└── clusters/vx-home/       # Original structure (kept until migration complete)
+```
+
+### Step 17b: Dry-Run New Overlay
+
+```bash
+# Preview what would be applied
+microk8s kubectl apply -k k8s/overlays/vx-home --dry-run=client
+```
+
+### Step 17c: Diff Against Running State
+
+```bash
+# See differences from current cluster state
+microk8s kubectl diff -k k8s/overlays/vx-home
+```
+
+### Step 17d: Apply Non-Critical Apps First
+
+```bash
+# Start with apps that don't have critical data
+microk8s kubectl apply -k k8s/overlays/vx-home/apps/kokoro
+microk8s kubectl apply -k k8s/overlays/vx-home/apps/faster-whisper
+```
+
+### Step 17e: Apply Full Overlay
+
+```bash
+# Apply entire overlay
+microk8s kubectl apply -k k8s/overlays/vx-home
+```
+
+### Step 17f: Verify Vault Agent Injection
+
+After applying overlays with Vault annotations:
+
+```bash
+# Check for vault-agent-init container
+microk8s kubectl get pods -n ai -l app=openwebui -o jsonpath='{.items[0].spec.initContainers[*].name}'
+
+# Should include: vault-agent-init
+
+# Check secrets are injected
+microk8s kubectl exec -n ai deploy/openwebui -c openwebui -- cat /vault/secrets/env
+```
+
+### Step 17g: Remove Old Kubernetes Secret (After Verification)
+
+Only after confirming Vault injection works:
+
+```bash
+# Backup first
+microk8s kubectl get secret ai-secrets -n ai -o yaml > ai-secrets-backup.yaml
+
+# Delete old secret
+microk8s kubectl delete secret ai-secrets -n ai
+```
+
+---
+
+## Phase 18: Adding Worker Nodes
+
+This phase covers adding additional nodes to expand cluster capacity and enable storage replication.
+
+### Prerequisites (New Node)
+
+- Rocky Linux 9.x installed
+- Network connectivity to node-00 (10.0.3.5)
+- Dedicated disk for Ceph OSD (e.g., /dev/sdb)
+- Hostname configured (e.g., `vx-app-01.adm.vx.home`)
+
+### Step 18a: Configure Firewall on New Node
+
+```bash
+# On new node (vx-app-01)
+sudo firewall-cmd --permanent --add-port=16443/tcp   # MicroK8s API
+sudo firewall-cmd --permanent --add-port=10250/tcp   # Kubelet
+sudo firewall-cmd --permanent --add-port=10255/tcp   # Kubelet read-only
+sudo firewall-cmd --permanent --add-port=25000/tcp   # Cluster agent
+sudo firewall-cmd --permanent --add-port=12379/tcp   # etcd
+sudo firewall-cmd --permanent --add-port=10257/tcp   # Controller manager
+sudo firewall-cmd --permanent --add-port=10259/tcp   # Scheduler
+sudo firewall-cmd --permanent --add-port=19001/tcp   # Dqlite
+sudo firewall-cmd --permanent --add-port=4789/udp    # Calico VXLAN
+sudo firewall-cmd --permanent --add-port=7443/tcp    # MicroCeph cluster API
+sudo firewall-cmd --permanent --add-port=3300/tcp    # Ceph MON
+sudo firewall-cmd --permanent --add-port=6789/tcp    # Ceph MON legacy
+sudo firewall-cmd --permanent --add-port=6800-7300/tcp  # Ceph OSD
+sudo firewall-cmd --reload
+```
+
+### Step 18b: Install Snap (Rocky Linux)
+
+Rocky Linux requires EPEL and snapd to be installed first:
+
+```bash
+# On new node (vx-app-01)
+# Install EPEL repository
+sudo dnf install -y epel-release
+
+# Install snapd
+sudo dnf install -y snapd
+
+# Enable and start snapd
+sudo systemctl enable --now snapd.socket
+
+# Create symlink for classic snap support
+sudo ln -s /var/lib/snapd/snap /snap
+
+# IMPORTANT: Log out and back in, or reboot, for snap paths to take effect
+# Alternatively, run this to refresh your shell:
+exec $SHELL
+```
+
+### Step 18c: Install MicroK8s on New Node
+
+```bash
+# On new node (vx-app-01)
+sudo snap install microk8s --classic --channel=1.35/stable
+sudo usermod -aG microk8s $USER
+newgrp microk8s
+```
+
+### Step 18d: Generate Join Token (From Existing Node)
+
+```bash
+# On vx-app-00 - generates a one-time join token
+microk8s add-node
+```
+
+**Output will look like:**
+```
+From the node you wish to join to this cluster, run the following:
+microk8s join 10.0.3.5:25000/abc123def456...
+
+Use the '--worker' flag to join as a worker (no control plane).
+```
+
+### Step 18e: Join MicroK8s Cluster (On New Node)
+
+```bash
+# On new node (vx-app-01) - use the token from previous step
+microk8s join 10.0.3.5:25000/<token>
+```
+
+**Note:** All MicroK8s nodes share control plane duties by default. This provides HA but uses more resources. Use `--worker` flag if you want a worker-only node.
+
+### Step 18f: Verify MicroK8s Join
+
+```bash
+# On either node
+microk8s kubectl get nodes
+```
+
+**Expected:**
+```
+NAME                    STATUS   ROLES    AGE   VERSION
+vx-app-00.adm.vx.home   Ready    <none>   7d    v1.35.x
+vx-app-01.adm.vx.home   Ready    <none>   1m    v1.35.x
+```
+
+### Step 18g: Label Nodes
+
+```bash
+# On vx-app-00 (or any node with kubectl access)
+# Label GPU node
+microk8s kubectl label node vx-app-00.adm.vx.home gpu=true
+
+# Label non-GPU node
+microk8s kubectl label node vx-app-01.adm.vx.home gpu=false
+
+# Verify labels
+microk8s kubectl get nodes --show-labels | grep gpu
+```
+
+### Step 18h: Install MicroCeph on New Node
+
+```bash
+# On new node (vx-app-01)
+sudo snap install microceph --channel=latest/stable
+```
+
+### Step 18i: Generate MicroCeph Join Token (From Existing Node)
+
+```bash
+# On vx-app-00
+sudo microceph cluster add vx-app-01
+```
+
+**Save the output token for the next step.**
+
+### Step 18j: Join MicroCeph Cluster (On New Node)
+
+```bash
+# On new node (vx-app-01) - use token from previous step
+sudo microceph cluster join <token>
+```
+
+### Step 18k: Add OSD on New Node
+
+```bash
+# On new node (vx-app-01)
+# Verify disk exists
+lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT
+
+# Add disk to Ceph (assuming /dev/sdb)
+sudo microceph disk add /dev/sdb --wipe
+```
+
+### Step 18l: Update Pool Replication
+
+Now that you have 2 OSDs, increase replication for data redundancy:
+
+```bash
+# On vx-app-00 (or any node)
+# Update pool to replicate across 2 OSDs
+sudo microceph.ceph osd pool set microk8s-rbd0 size 2
+sudo microceph.ceph osd pool set microk8s-rbd0 min_size 1
+
+# Update global defaults for future pools
+sudo microceph.ceph config set global osd_pool_default_size 2
+```
+
+**Pool Size Guidance:**
+| OSDs | Recommended size | min_size | Notes |
+|------|------------------|----------|-------|
+| 1    | 1                | 1        | No redundancy |
+| 2    | 2                | 1        | Single disk failure tolerance |
+| 3+   | 3                | 2        | Full redundancy |
+
+### Step 18m: Verify Multi-Node Cluster
+
+```bash
+# MicroK8s cluster
+microk8s kubectl get nodes -o wide
+
+# MicroCeph cluster status
+sudo microceph status
+
+# Ceph health (should show 2 OSDs)
+sudo microceph.ceph status
+
+# OSD tree (should show both nodes)
+sudo microceph.ceph osd tree
+
+# Pool replication status
+sudo microceph.ceph osd pool ls detail
+```
+
+**Expected Ceph output:**
+```
+cluster:
+  id:     ...
+  health: HEALTH_OK
+
+services:
+  mon: 2 daemons, quorum vx-app-00,vx-app-01
+  osd: 2 osds: 2 up, 2 in
+```
+
+**Expected OSD tree:**
+```
+ID  CLASS  WEIGHT   TYPE NAME                STATUS
+-1         0.23    root default
+-3         0.11        host vx-app-00
+ 0   ssd   0.11            osd.0              up
+-5         0.11        host vx-app-01
+ 1   ssd   0.11            osd.1              up
+```
+
+### Storage Architecture Summary
+
+With 2 nodes and 1 OSD per node (2 OSDs total), storage is configured as:
+
+| Application | Storage Class | Access Mode | Scaling |
+|-------------|---------------|-------------|---------|
+| Open WebUI | `cephfs` | ReadWriteMany | Horizontal (multiple replicas) |
+| pgvector | `ceph-rbd` | ReadWriteOnce | Vertical |
+| Redis | `ceph-rbd` | ReadWriteOnce | Vertical |
+| Vault | `ceph-rbd` | ReadWriteOnce | Vertical |
+
+**Key points:**
+- Both RBD and CephFS pools share all OSDs (pooled storage)
+- Data is replicated across both nodes (size=2)
+- CephFS enables Open WebUI horizontal scaling under load
+
+---
+
 ## Cleanup (If Needed)
 
 To remove everything and start over:
@@ -978,4 +1691,4 @@ This walkthrough covers these CKA domains:
 
 ---
 
-*Last Updated: December 25, 2025*
+*Last Updated: December 30, 2025*

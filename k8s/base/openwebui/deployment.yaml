@@ -1,0 +1,94 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openwebui
+  labels:
+    app: openwebui
+    app.kubernetes.io/name: openwebui
+    app.kubernetes.io/component: frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: openwebui
+  template:
+    metadata:
+      labels:
+        app: openwebui
+        app.kubernetes.io/name: openwebui
+        app.kubernetes.io/component: frontend
+    spec:
+      serviceAccountName: openwebui
+      containers:
+      - name: openwebui
+        image: ghcr.io/open-webui/open-webui:latest-slim
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        env:
+        # Core configuration (non-secret)
+        - name: WEBUI_URL
+          value: "https://ai.example.com"
+        - name: REDIS_URL
+          value: "redis://redis:6379/0"
+        - name: ENABLE_WEBSOCKET_SUPPORT
+          value: "true"
+        - name: WEBSOCKET_MANAGER
+          value: "redis"
+        - name: WEBSOCKET_REDIS_URL
+          value: "redis://redis:6379/1"
+        - name: UVICORN_WORKERS
+          value: "2"
+        # TTS Configuration
+        - name: AUDIO_TTS_ENGINE
+          value: "openai"
+        - name: AUDIO_TTS_OPENAI_API_BASE_URL
+          value: "http://kokoro:8880/v1"
+        - name: AUDIO_TTS_OPENAI_API_KEY
+          value: "not-needed"
+        - name: AUDIO_TTS_MODEL
+          value: "kokoro"
+        - name: AUDIO_TTS_VOICE
+          value: "af_bella"
+        # STT Configuration
+        - name: AUDIO_STT_ENGINE
+          value: "openai"
+        - name: AUDIO_STT_OPENAI_API_BASE_URL
+          value: "http://faster-whisper:8000/v1"
+        - name: AUDIO_STT_OPENAI_API_KEY
+          value: "not-needed"
+        - name: AUDIO_STT_MODEL
+          value: "Systran/faster-whisper-base"
+        # OpenAI API (base URL - key from Vault)
+        - name: OPENAI_API_BASE_URL
+          value: "https://api.openai.com/v1"
+        volumeMounts:
+        - name: data
+          mountPath: /app/backend/data
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "2000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 15
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 3
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: openwebui-data

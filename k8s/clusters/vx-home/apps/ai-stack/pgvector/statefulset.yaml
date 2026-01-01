@@ -81,7 +81,7 @@ spec:
         app: pgvector
     spec:
       accessModes: ["ReadWriteOnce"]
-      storageClassName: microk8s-hostpath
+      storageClassName: ceph-rbd
       resources:
         requests:
           storage: 50Gi
