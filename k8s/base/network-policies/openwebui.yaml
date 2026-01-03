@@ -1,0 +1,76 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: openwebui
+  labels:
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: openwebui
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow traffic from ingress controller
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: ingress
+  egress:
+  # Allow traffic to Redis (sessions, websockets)
+  - to:
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - port: 6379
+      protocol: TCP
+  # Allow traffic to pgvector (database)
+  - to:
+    - podSelector:
+        matchLabels:
+          app: pgvector
+    ports:
+    - port: 5432
+      protocol: TCP
+  # Allow traffic to Kokoro (TTS)
+  - to:
+    - podSelector:
+        matchLabels:
+          app: kokoro
+    ports:
+    - port: 8880
+      protocol: TCP
+  # Allow traffic to Faster-Whisper (STT)
+  - to:
+    - podSelector:
+        matchLabels:
+          app: faster-whisper
+    ports:
+    - port: 8000
+      protocol: TCP
+  # Allow DNS lookups
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - port: 53
+      protocol: UDP
+    - port: 53
+      protocol: TCP
+  # Allow external HTTPS (OpenAI API, etc)
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+        except:
+        - 10.0.0.0/8
+        - 172.16.0.0/12
+        - 192.168.0.0/16
+    ports:
+    - port: 443
+      protocol: TCP

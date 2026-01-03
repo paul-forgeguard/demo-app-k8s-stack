@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - default-deny.yaml
+  - openwebui.yaml
+  - pgvector.yaml
+  - redis.yaml
+  - kokoro.yaml
+  - faster-whisper.yaml
+  - pgadmin.yaml
+
+commonLabels:
+  app.kubernetes.io/part-of: ai-stack-network-policies

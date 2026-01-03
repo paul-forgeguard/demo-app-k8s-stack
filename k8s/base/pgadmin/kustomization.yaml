@@ -6,6 +6,7 @@ resources:
   - service.yaml
   - serviceaccount.yaml
   - configmap-servers.yaml
+  - ingress.yaml
 
 commonLabels:
   app.kubernetes.io/name: pgadmin

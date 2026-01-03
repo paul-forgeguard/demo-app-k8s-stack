@@ -1,0 +1,44 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: pgvector
+  labels:
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: pgvector
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow traffic from OpenWebUI
+  - from:
+    - podSelector:
+        matchLabels:
+          app: openwebui
+    ports:
+    - port: 5432
+      protocol: TCP
+  # Allow traffic from pgAdmin
+  - from:
+    - podSelector:
+        matchLabels:
+          app: pgadmin
+    ports:
+    - port: 5432
+      protocol: TCP
+  egress:
+  # Allow DNS lookups only
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - port: 53
+      protocol: UDP
+    - port: 53
+      protocol: TCP

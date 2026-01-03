@@ -15,6 +15,11 @@ patches:
     target:
       kind: Deployment
       name: pgadmin
+  # Ingress with TLS and vx-home hostname
+  - path: patches/ingress.yaml
+    target:
+      kind: Ingress
+      name: pgadmin
   # TODO: Re-enable when Vault Agent file-to-env integration is complete
   # - path: patches/vault-annotations.yaml
   #   target:

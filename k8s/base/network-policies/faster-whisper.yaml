@@ -1,0 +1,36 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: faster-whisper
+  labels:
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: faster-whisper
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow traffic from OpenWebUI only
+  - from:
+    - podSelector:
+        matchLabels:
+          app: openwebui
+    ports:
+    - port: 8000
+      protocol: TCP
+  egress:
+  # Allow DNS lookups only
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - port: 53
+      protocol: UDP
+    - port: 53
+      protocol: TCP

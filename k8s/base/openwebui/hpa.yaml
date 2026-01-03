@@ -12,7 +12,7 @@ spec:
     kind: Deployment
     name: openwebui
   minReplicas: 2
-  maxReplicas: 6
+  maxReplicas: 4
   metrics:
   - type: Resource
     resource:
@@ -20,9 +20,5 @@ spec:
       target:
         type: Utilization
         averageUtilization: 70
-  - type: Resource
-    resource:
-      name: memory
-      target:
-        type: Utilization
-        averageUtilization: 80
+  # Note: Memory-based scaling removed - OpenWebUI uses ~1.3GB at idle
+  # which exceeds any reasonable request value percentage

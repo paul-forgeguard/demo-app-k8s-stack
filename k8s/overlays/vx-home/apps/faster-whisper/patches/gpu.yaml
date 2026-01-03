@@ -6,7 +6,7 @@ spec:
   template:
     spec:
       nodeSelector:
-        gpu: "true"
+        gpu: "small"
       containers:
       - name: faster-whisper
         resources:

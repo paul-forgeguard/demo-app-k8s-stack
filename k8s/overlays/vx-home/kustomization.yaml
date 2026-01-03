@@ -11,16 +11,17 @@ resources:
   # cert-manager ClusterIssuers
   - cert-manager/clusterissuer.yaml
 
-  # Ingress resources
-  - ingress/openwebui.yaml
-
   # Apps (each has its own kustomization with patches)
+  # Note: Ingress is patched via apps/openwebui/patches/ingress.yaml
   - apps/openwebui
   - apps/pgvector
   - apps/redis
   - apps/pgadmin
   - apps/kokoro
   - apps/faster-whisper
+
+  # Network Policies (restricts pod-to-pod communication)
+  - network-policies
 
 commonLabels:
   app.kubernetes.io/managed-by: kustomize
